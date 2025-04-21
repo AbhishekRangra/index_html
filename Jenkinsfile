@@ -1,43 +1,50 @@
 pipeline {
     agent any
+
     environment {
-        TAG_FILE = 'last_deployment_tag.txt' // File to store the version tag
-        VALUES_YAML_PATH = 'mychart/values.yaml' // Path to the values.yaml file
+        VALUES_YAML = 'mychart/values.yaml'
+        TAG_FILE = 'last_deployment_tag.txt'
     }
+
     stages {
-        stage('Assign Image Tag and Update values.yaml') {
+        stage('Generate Tag') {
             steps {
                 script {
-                    // Default version to 1 if no tag file exists
-                    def tag = 'v1'
-
+                    def newTag = 'v1'
                     if (fileExists(TAG_FILE)) {
-                        // Read the tag file to get the last used version
-                        def lastTag = readFile(TAG_FILE).trim()
-                        def versionNumber = lastTag.replace('v', '') as int // Extract the version number and convert it to int
-                        versionNumber++ // Increment the version number
-                        tag = "v${versionNumber}" // Create new tag with the incremented version number
-                    } else {
-                        // If no tag file exists, initialize with v1
-                        tag = 'v1'
+                        def last = readFile(TAG_FILE).trim().replace('v', '') as int
+                        newTag = "v${last + 1}"
                     }
-
-                    // Store the new tag in the tag file to track the next deployment
-                    writeFile(file: TAG_FILE, text: tag)
-
-                    // Assign the tag to the environment variable
-                    echo "Assigning tag: $tag"
-                    env.DOCKER_TAG = tag
-
-                    // Update values.yaml with the latest tag
-                    echo "Updating values.yaml with tag: $tag"
-                    sh """
-                        sed -i 's/tag: ".*"/tag: "$DOCKER_TAG"/g' $VALUES_YAML_PATH
-                        git add $VALUES_YAML_PATH
-                        git commit -m "Updated Helm chart image tag to $DOCKER_TAG"
-                        git push origin HEAD:user
-                    """
+                    writeFile file: TAG_FILE, text: newTag
+                    env.NEW_TAG = newTag
+                    echo "Generated tag: ${newTag}"
                 }
+            }
+        }
+
+        stage('Update values.yaml') {
+            steps {
+                sh """
+                  sed -i 's/^  tag: .*/  tag: "${env.NEW_TAG}"/' ${VALUES_YAML}
+                """
+            }
+        }
+
+        stage('Git Commit and Push') {
+            steps {
+                sh """
+                    git config user.email "jenkins@example.com"
+                    git config user.name "Jenkins CI"
+                    git add ${VALUES_YAML} ${TAG_FILE}
+                    git commit -m "chore: bump image tag to ${env.NEW_TAG}"
+                    git push origin HEAD
+                """
+            }
+        }
+
+        stage('Trigger Deployment Pipeline') {
+            steps {
+                build job: 'deploy-chart', wait: false
             }
         }
     }
