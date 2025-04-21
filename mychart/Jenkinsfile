@@ -2,38 +2,27 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_TAG = "v1"
+        VALUES_YAML = 'mychart/values.yaml'
     }
 
     stages {
-        stage('Clone Repo') {
+        stage('Extract Tag') {
             steps {
-                checkout scm
+                script {
+                    def yaml = readFile(VALUES_YAML)
+                    def tagLine = yaml.readLines().find { it.trim().startsWith('tag:') }
+                    def tag = tagLine.split(':')[1].trim().replaceAll('"', '')
+                    env.IMAGE_TAG = tag
+                    echo "Deploying using image tag: ${env.IMAGE_TAG}"
+                }
             }
         }
 
-        stage('Update Helm Chart Image Tag') {
+        stage('Deploy Helm Chart') {
             steps {
-                script {
-                    catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                        withCredentials([usernamePassword(
-                            credentialsId: 'github',
-                            usernameVariable: 'GIT_USERNAME',
-                            passwordVariable: 'GIT_PASSWORD'
-                        )]) {
-                            sh '''
-                                git config user.email "abhishekrangra@gmail.com"
-                                git config user.name "AbhishekRangra"
-
-                                sed -i 's/tag: ".*"/tag: "'"$DOCKER_TAG"'"/g' mychart/values.yaml
-
-                                git add mychart/values.yaml
-                                git commit -m "Updated image tag to $DOCKER_TAG"
-                                git push https://$GIT_USERNAME:$GIT_PASSWORD@github.com/$GIT_USERNAME/index_html.git HEAD:main
-                            '''
-                        }
-                    }
-                }
+                sh """
+                    helm upgrade --install my-release ./mychart --values ${VALUES_YAML}
+                """
             }
         }
     }
