@@ -25,7 +25,7 @@ pipeline {
                                 git config user.email "abhishekrangra@gmail.com"
                                 git config user.name "AbhishekRangra"
 
-                                sed -i 's/tag: ".*"/tag: "'"$DOCKER_TAG"'"/g' helm/mychart/values.yaml
+                                sed -i 's/tag: ".*"/tag: "'"$DOCKER_TAG"'"/g' mychart/values.yaml
 
                                 git add helm/mychart/values.yaml
                                 git commit -m "Updated image tag to $DOCKER_TAG"
