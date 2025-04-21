@@ -2,60 +2,78 @@ pipeline {
     agent any
 
     environment {
-        GIT_REPO = 'https://github.com/AbhishekRangra/index_html.git'
-        GIT_BRANCH = 'user'
-        GIT_USERNAME = 'AbhishekRangra'
-        GIT_EMAIL = 'abhishekrangra@gmail.com'
+        IMAGE_NAME = 'abhishekrangra/js_app'
+        DOCKER_TAG = 'v1'
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                git branch: "${env.GIT_BRANCH}", url: "${env.GIT_REPO}"
+                echo 'Checking out code...'
+                checkout([
+                    $class: 'GitSCM',
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/AbhishekRangra/js_app.git',
+                        credentialsId: 'github'
+                    ]],
+                    branches: [[name: '*/main']]
+                ])
             }
         }
 
-        stage('Generate Tag') {
+        stage('Docker Login') {
             steps {
-                script {
-                    def lastTagFile = 'last_deployment_tag.txt'
-                    def newTag = 'v1'
-
-                    if (fileExists(lastTagFile)) {
-                        def lastTag = readFile(lastTagFile).trim()
-                        def tagNum = lastTag.replace('v', '').toInteger() + 1
-                        newTag = "v${tagNum}"
-                    }
-
-                    writeFile file: lastTagFile, text: newTag
-                    env.IMAGE_TAG = newTag
-                    echo "Generated tag: ${newTag}"
+                echo 'Logging into Docker Hub...'
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    '''
                 }
             }
         }
 
-        stage('Update values.yaml') {
+        stage('Build Docker Image') {
             steps {
-                sh 'sed -i "s/^  tag: .*/  tag: \\"${IMAGE_TAG}\\"/" mychart/values.yaml'
-            }
-        }
-
-        stage('Git Commit and Push') {
-            steps {
+                echo 'Building Docker image...'
                 sh '''
-                    git config user.email "${GIT_EMAIL}"
-                    git config user.name "${GIT_USERNAME}"
-                    git add mychart/values.yaml last_deployment_tag.txt
-                    git commit -m "chore: bump image tag to ${IMAGE_TAG}" || echo "No changes to commit"
-                    git push origin HEAD:${GIT_BRANCH}
+                    docker build -t $IMAGE_NAME:$DOCKER_TAG .
                 '''
             }
         }
 
-        stage('Trigger Deployment Pipeline') {
+        stage('Push Docker Image') {
             steps {
-                build job: 'index_html_2'
+                echo 'Pushing Docker image to Docker Hub...'
+                sh '''
+                    docker push $IMAGE_NAME:$DOCKER_TAG
+                '''
             }
+        }
+
+        stage('Deploy Docker Container') {
+            steps {
+                echo 'Deploying Docker container...'
+                sh '''
+                    docker rm -f js_app-container || true
+                    docker run -d --name js_app-container -p 3000:3000 $IMAGE_NAME:$DOCKER_TAG
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline execution completed.'
+        }
+        success {
+            echo 'Docker image built, pushed, and deployed successfully.'
+        }
+        failure {
+            echo 'Pipeline failed. Check error logs.'
         }
     }
 }
