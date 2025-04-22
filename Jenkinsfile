@@ -16,7 +16,7 @@ pipeline {
                         url: 'https://github.com/AbhishekRangra/index_html.git',
                         credentialsId: 'github'
                     ]],
-                    branches: [[name: '*/user']]
+                    branches: [[name: '*/main']]
                 ])
             }
         }
@@ -70,7 +70,7 @@ pipeline {
             echo 'Pipeline execution completed.'
         }
         success {
-            echo 'Docker image built and pushed successfully.'
+            echo 'Docker image built, pushed, and deployed successfully.'
         }
         failure {
             echo 'Pipeline failed. Check error logs.'
