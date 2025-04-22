@@ -1,1 +1,41 @@
 
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_TAG = "v1"
+    }
+
+    stages {
+        stage('Clone Repo') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Update Helm Chart Image Tag') {
+            steps {
+                script {
+                    catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                        withCredentials([usernamePassword(
+                            credentialsId: 'github',
+                            usernameVariable: 'GIT_USERNAME',
+                            passwordVariable: 'GIT_PASSWORD'
+                        )]) {
+                            sh '''
+                                git config user.email "abhishekrangra@gmail.com"
+                                git config user.name "AbhishekRangra"
+
+                                sed -i 's/tag: ".*"/tag: "'"$DOCKER_TAG"'"/g' mychart/values.yaml
+
+                                git add mychart/values.yaml
+                                git commit -m "Updated image tag to $DOCKER_TAG"
+                                git push https://$GIT_USERNAME:$GIT_PASSWORD@github.com/$GIT_USERNAME/index_html.git HEAD:main
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
